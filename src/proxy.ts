@@ -9,26 +9,31 @@ export const proxy = async (req: NextRequest) => {
   if (!roomMatched) return NextResponse.redirect(new URL("/", req.url));
 
   const roomId = roomMatched[1];
+  const connectedKey = `connected:${roomId}`;
 
-  const meta = await redis.hgetall<{ connected: string[]; createdAt: number }>(
-    `meta:${roomId}`
-  );
-
-  if (!meta)
+  // Check if room exists
+  const meta = await redis.hgetall<{ createdAt: number }>(`meta:${roomId}`);
+  if (!meta) {
     return NextResponse.redirect(new URL("/?error=room-not-found", req.url));
+  }
 
   const existingToken = req.cookies.get("x-auth-token")?.value;
 
-  if (existingToken && meta.connected.includes(existingToken))
+  // If user already has a token and is in the room, let them in
+  if (existingToken && (await redis.sismember(connectedKey, existingToken))) {
     return NextResponse.next();
+  }
 
-  if (meta.connected.length >= 2)
+  // Check room capacity (2 users max)
+  const connectedCount = await redis.scard(connectedKey);
+  if (!existingToken && connectedCount >= 2) {
     return NextResponse.redirect(new URL("/?error=room-full", req.url));
+  }
 
-  const response = NextResponse.next();
-
+  // Generate a new token for this user
   const token = nanoid();
 
+  const response = NextResponse.next();
   response.cookies.set("x-auth-token", token, {
     path: "/",
     httpOnly: true,
@@ -36,9 +41,9 @@ export const proxy = async (req: NextRequest) => {
     sameSite: "strict",
   });
 
-  await redis.hset(`meta:${roomId}`, {
-    connected: [...meta.connected, token],
-  });
+  // Add token to Redis set and set expiry
+  await redis.sadd(connectedKey, token);
+  await redis.expire(connectedKey, 600); // 10 min TTL same as room TTL
 
   return response;
 };
