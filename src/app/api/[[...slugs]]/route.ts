@@ -11,37 +11,43 @@ const rooms = new Elysia({ prefix: "/room" })
   .post("/create", async () => {
     const roomId = nanoid();
 
+    // meta hash
     await redis.hset(`meta:${roomId}`, {
-      connected: [],
       createdAt: Date.now(),
     });
 
+    // empty connected list
+    await redis.del(`connected:${roomId}`);
+
     await redis.expire(`meta:${roomId}`, ROOM_TTL_SECONDS);
+    await redis.expire(`connected:${roomId}`, ROOM_TTL_SECONDS);
 
     return { roomId };
   })
+
   .use(authMiddleware)
+
   .get(
     "/ttl",
     async ({ auth }) => {
       const ttl = await redis.ttl(`meta:${auth.roomId}`);
       return { ttl: ttl > 0 ? ttl : 0 };
     },
-    {
-      query: z.object({ roomId: z.string() }),
-    }
+    { query: z.object({ roomId: z.string() }) }
   )
+
   .delete(
     "/",
     async ({ auth }) => {
-      await realtime
-        .channel(auth.roomId)
-        .emit("chat.destroy", { isDestroyed: true });
+      await realtime.channel(auth.roomId).emit("chat.destroy", {
+        isDestroyed: true,
+      });
 
       await Promise.all([
-        redis.del(auth.roomId),
         redis.del(`meta:${auth.roomId}`),
         redis.del(`messages:${auth.roomId}`),
+        redis.del(`history:${auth.roomId}`),
+        redis.del(`connected:${auth.roomId}`),
       ]);
     },
     { query: z.object({ roomId: z.string() }) }
@@ -56,10 +62,7 @@ const messages = new Elysia({ prefix: "/messages" })
       const { roomId, token } = auth;
 
       const roomExists = await redis.exists(`meta:${roomId}`);
-
-      if (!roomExists) {
-        throw new Error("Room does not exist");
-      }
+      if (!roomExists) throw new Error("Room does not exist");
 
       const message: Message = {
         id: nanoid(),
@@ -74,12 +77,8 @@ const messages = new Elysia({ prefix: "/messages" })
       await realtime.channel(roomId).emit("chat.message", message);
 
       const remaining = await redis.ttl(`meta:${roomId}`);
-
       await redis.expire(`messages:${roomId}`, remaining);
-
-      await redis.expire(`history:${roomId}`, remaining);
-
-      await redis.expire(roomId, remaining);
+      await redis.expire(`connected:${roomId}`, remaining);
     },
     {
       query: z.object({ roomId: z.string() }),

@@ -10,25 +10,28 @@ export const proxy = async (req: NextRequest) => {
 
   const roomId = roomMatched[1];
 
-  const meta = await redis.hgetall<{ connected: string[]; createdAt: number }>(
-    `meta:${roomId}`
-  );
+  const meta = await redis.hgetall<{ createdAt: number }>(`meta:${roomId}`);
 
-  if (!meta)
+  if (!meta) {
     return NextResponse.redirect(new URL("/?error=room-not-found", req.url));
+  }
+
+  const connected = await redis.lrange<string>(`connected:${roomId}`, 0, -1);
 
   const existingToken = req.cookies.get("x-auth-token")?.value;
 
-  if (existingToken && meta.connected.includes(existingToken)) {
+  // Already registered user → allow
+  if (existingToken && connected.includes(existingToken)) {
     return NextResponse.next();
   }
 
-  if (!existingToken && meta.connected.length >= 2) {
+  // Room full
+  if (!existingToken && connected.length >= 2) {
     return NextResponse.redirect(new URL("/?error=room-full", req.url));
   }
 
+  // Register new user
   const response = NextResponse.next();
-
   const token = nanoid();
 
   response.cookies.set("x-auth-token", token, {
@@ -38,9 +41,7 @@ export const proxy = async (req: NextRequest) => {
     sameSite: "strict",
   });
 
-  await redis.hset(`meta:${roomId}`, {
-    connected: [...meta.connected, token],
-  });
+  await redis.rpush(`connected:${roomId}`, token);
 
   return response;
 };
