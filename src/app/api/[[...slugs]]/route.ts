@@ -12,9 +12,9 @@ const rooms = new Elysia({ prefix: "/room" })
     const roomId = nanoid();
 
     await redis.hset(`meta:${roomId}`, {
+      connected: [],
       createdAt: Date.now(),
     });
-    await redis.del(`connected:${roomId}`);
 
     await redis.expire(`meta:${roomId}`, ROOM_TTL_SECONDS);
 
@@ -27,9 +27,7 @@ const rooms = new Elysia({ prefix: "/room" })
       const ttl = await redis.ttl(`meta:${auth.roomId}`);
       return { ttl: ttl > 0 ? ttl : 0 };
     },
-    {
-      query: z.object({ roomId: z.string() }),
-    }
+    { query: z.object({ roomId: z.string() }) }
   )
   .delete(
     "/",
@@ -53,7 +51,7 @@ const messages = new Elysia({ prefix: "/messages" })
     "/",
     async ({ body, auth }) => {
       const { sender, text } = body;
-      const { roomId, token } = auth;
+      const { roomId } = auth;
 
       const roomExists = await redis.exists(`meta:${roomId}`);
 
@@ -69,16 +67,16 @@ const messages = new Elysia({ prefix: "/messages" })
         roomId,
       };
 
-      await redis.rpush(`messages:${roomId}`, { ...message, token });
-
+      await redis.rpush(`messages:${roomId}`, {
+        ...message,
+        token: auth.token,
+      });
       await realtime.channel(roomId).emit("chat.message", message);
 
       const remaining = await redis.ttl(`meta:${roomId}`);
 
       await redis.expire(`messages:${roomId}`, remaining);
-
       await redis.expire(`history:${roomId}`, remaining);
-
       await redis.expire(roomId, remaining);
     },
     {

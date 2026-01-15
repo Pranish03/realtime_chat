@@ -15,17 +15,17 @@ const formatTimeRemaining = (seconds: number) => {
 };
 
 const Page = () => {
-  const router = useRouter();
-
   const params = useParams();
   const roomId = params.roomId as string;
 
-  const { username } = useUsername();
+  const router = useRouter();
 
+  const { username } = useUsername();
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [copyStatus, setCopyStatus] = useState("COPY");
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
 
   const { data: ttlData } = useQuery({
     queryKey: ["ttl", roomId],
@@ -34,8 +34,6 @@ const Page = () => {
       return res.data;
     },
   });
-
-  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
 
   useEffect(() => {
     if (ttlData?.ttl !== undefined) setTimeRemaining(ttlData.ttl);
@@ -48,15 +46,12 @@ const Page = () => {
       router.push("/?destroyed=true");
       return;
     }
-
     const interval = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev === null || prev <= 1) {
           clearInterval(interval);
-          router.push("/?destroyed=true");
           return 0;
         }
-
         return prev - 1;
       });
     }, 1000);
@@ -106,7 +101,7 @@ const Page = () => {
   const copyLink = () => {
     const url = window.location.href;
     navigator.clipboard.writeText(url);
-    setCopyStatus("COPIED");
+    setCopyStatus("COPIED!");
     setTimeout(() => setCopyStatus("COPY"), 2000);
   };
 

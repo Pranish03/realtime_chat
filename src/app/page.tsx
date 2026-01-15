@@ -16,7 +16,6 @@ const Page = () => {
 
 function Lobby() {
   const { username } = useUsername();
-
   const router = useRouter();
 
   const searchParams = useSearchParams();
@@ -27,7 +26,9 @@ function Lobby() {
     mutationFn: async () => {
       const res = await client.room.create.post();
 
-      if (res.status === 200) router.push(`/room/${res.data?.roomId}`);
+      if (res.status === 200) {
+        router.push(`/room/${res.data?.roomId}`);
+      }
     },
   });
 
@@ -60,6 +61,7 @@ function Lobby() {
             </p>
           </div>
         )}
+
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold tracking-tight text-green-500">
             {">"}private_chat

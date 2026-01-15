@@ -21,7 +21,7 @@ export const authMiddleware = new Elysia({ name: "auth" })
     const token = cookie["x-auth-token"].value as string | undefined;
 
     if (!roomId || !token) {
-      throw new AuthError("Missing roomId or token");
+      throw new AuthError("Missing roomId or token.");
     }
 
     const connected = await redis.hget<string[]>(`meta:${roomId}`, "connected");

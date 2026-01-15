@@ -3,19 +3,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { redis } from "./lib/redis";
 
 export const proxy = async (req: NextRequest) => {
-  const pathName = req.nextUrl.pathname;
+  const pathname = req.nextUrl.pathname;
 
-  const roomMatched = pathName.match(/^\/room\/([^/]+)$/);
-  if (!roomMatched) return NextResponse.redirect(new URL("/", req.url));
+  const roomMatch = pathname.match(/^\/room\/([^/]+)$/);
+  if (!roomMatch) return NextResponse.redirect(new URL("/", req.url));
 
-  const roomId = roomMatched[1];
+  const roomId = roomMatch[1];
 
   const meta = await redis.hgetall<{ connected: string[]; createdAt: number }>(
     `meta:${roomId}`
   );
 
-  if (!meta)
+  if (!meta) {
     return NextResponse.redirect(new URL("/?error=room-not-found", req.url));
+  }
 
   const existingToken = req.cookies.get("x-auth-token")?.value;
 
@@ -23,7 +24,7 @@ export const proxy = async (req: NextRequest) => {
     return NextResponse.next();
   }
 
-  if (!existingToken && meta.connected.length >= 2) {
+  if (meta.connected.length >= 2) {
     return NextResponse.redirect(new URL("/?error=room-full", req.url));
   }
 
